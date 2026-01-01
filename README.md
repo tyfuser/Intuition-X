@@ -230,21 +230,3 @@ o	schema 校验 + 失败重试一次
 7.	写 contract 测试：learn/compare 返回结构必备字段齐全
 8.	写 README：本地安装、启动、curl 示例
 
-
-我的模型api是uAdqP-P0lYa8YOFe7lxIW7RWyu5x-E_C9UmRARefzF9giDGzIoKYlZG4dg0-VaFhIMU_ePAd1zHP5keROy3gkw
-目前只有来理解视频的多模态模型，没有图生视频的模型，对接实例如下：
-curl --location -g --request POST 'https://www.sophnet.com/api/open-apis/v1/chat/completions' \
---header "Authorization: Bearer $API_KEY" \
---header "Content-Type: application/json" \
---data-raw '{
-    "messages": [
-          {
-             "role": "user",
-             "content": [
-                {"type": "text", "text": "这是什么"},
-                {"type": "image_url", "image_url": {"url": "xxx"}}
-             ]
-          }
-    ],
-    "model":"Qwen2.5-VL-7B-Instruct"
-}'
