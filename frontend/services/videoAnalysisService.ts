@@ -65,7 +65,7 @@ export const getJobStatus = async (jobId: string): Promise<JobResponse> => {
 };
 
 /**
- * 轮询任务状态直到完成
+ * 轮询任务状态直到完成（已弃用，使用 streamJobProgress 代替）
  */
 export const pollJobStatus = async (
   jobId: string,
@@ -101,6 +101,88 @@ export const pollJobStatus = async (
   }
 
   throw new Error('分析超时，请稍后查看历史记录');
+};
+
+/**
+ * SSE 流式接收任务进度和片段数据
+ */
+export const streamJobProgress = (
+  jobId: string,
+  callbacks: {
+    onProgress?: (percent: number, message: string, stage?: string) => void;
+    onSegments?: (segments: any[]) => void;
+    onComplete?: (result: any) => void;
+    onError?: (error: string) => void;
+  }
+): { close: () => void } => {
+  const url = `${SHOT_ANALYSIS_BASE_URL}${API_BASE_PATH}/jobs/${jobId}/stream`;
+  const eventSource = new EventSource(url);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case 'progress':
+          // 进度更新
+          if (callbacks.onProgress && data.progress) {
+            callbacks.onProgress(
+              data.progress.percent || 0,
+              data.progress.message || '',
+              data.progress.stage
+            );
+          }
+          break;
+
+        case 'segments':
+          // 片段数据更新
+          if (callbacks.onSegments && data.segments) {
+            callbacks.onSegments(data.segments);
+          }
+          break;
+
+        case 'complete':
+          // 任务完成
+          if (callbacks.onComplete && data.result) {
+            callbacks.onComplete(data.result);
+          }
+          eventSource.close();
+          break;
+
+        case 'error':
+          // 错误
+          if (callbacks.onError) {
+            callbacks.onError(data.error?.message || '未知错误');
+          }
+          eventSource.close();
+          break;
+      }
+    } catch (error) {
+      console.error('解析 SSE 数据失败:', error);
+    }
+  };
+
+  eventSource.addEventListener('done', () => {
+    console.log('SSE 流结束');
+    eventSource.close();
+  });
+
+  eventSource.addEventListener('error', (event) => {
+    console.error('SSE 连接错误:', event);
+    if (callbacks.onError) {
+      callbacks.onError('连接中断');
+    }
+    eventSource.close();
+  });
+
+  eventSource.onerror = (error) => {
+    console.error('SSE 错误:', error);
+    eventSource.close();
+  };
+
+  return {
+    close: () => eventSource.close()
+  };
 };
 
 /**

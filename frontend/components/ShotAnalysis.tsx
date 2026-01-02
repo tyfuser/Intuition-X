@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileVideo, Play, Pause, History, Trash2, ChevronRight, X } from 'lucide-react';
 import { Segment, Feature, JobResponse, HistoryItem } from '../types';
-import { createAnalysisJob, pollJobStatus, getJobStatus, getHistory, deleteJob } from '../services/videoAnalysisService';
+import { createAnalysisJob, streamJobProgress, getJobStatus, getHistory, deleteJob } from '../services/videoAnalysisService';
 import { isApiError } from '../services/api';
 
 const ShotAnalysis: React.FC = () => {
@@ -17,9 +17,11 @@ const ShotAnalysis: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<Segment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set());
+  const [currentPlayTime, setCurrentPlayTime] = useState<number>(0); // 当前播放时间（毫秒）
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<{ close: () => void } | null>(null);
 
   // 处理文件选择
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,6 +50,31 @@ const ShotAnalysis: React.FC = () => {
     }
   };
 
+  // 清理 SSE 连接
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.close();
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  // 监听视频播放时间
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeUpdate = () => {
+      setCurrentPlayTime(video.currentTime * 1000); // 转换为毫秒
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    return () => {
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [videoUrl]);
+
   // 开始分析
   const handleStartAnalysis = async () => {
     if (!videoPath.trim() && !selectedFile) {
@@ -57,7 +84,9 @@ const ShotAnalysis: React.FC = () => {
 
     setIsAnalyzing(true);
     setError(null);
-    setProgress({ percent: 0, message: '正在创建分析任务...' });
+    setProgress({ percent: 0, message: '正在创建分析任务...', stage: '' });
+    setPartialSegments([]); // 清空之前的片段
+    setResult(null);
 
     try {
       // 如果是文件上传，先上传文件获取服务器路径
@@ -100,28 +129,34 @@ const ShotAnalysis: React.FC = () => {
 
       console.log('任务已创建:', createResponse.job_id);
 
-      // 轮询状态
-      const finalResult = await pollJobStatus(
-        createResponse.job_id,
-        (progressData) => {
-          if (progressData.progress) {
-            setProgress({
-              percent: progressData.progress.percent,
-              message: progressData.progress.message
-            });
-          }
-          
-          // 显示部分结果
-          if (progressData.partial_result) {
-            setResult(progressData);
-          }
+      // 使用 SSE 流式接收进度和片段数据
+      streamRef.current = streamJobProgress(createResponse.job_id, {
+        onProgress: (percent, message, stage) => {
+          setProgress({ percent, message, stage: stage || '' });
         },
-        120,
-        1000
-      );
-
-      setResult(finalResult);
-      setProgress({ percent: 100, message: '分析完成！' });
+        onSegments: (segments) => {
+          console.log('收到片段更新:', segments.length, '个片段');
+          setPartialSegments(segments);
+        },
+        onComplete: (finalResult) => {
+          console.log('分析完成，最终结果:', finalResult);
+          setResult({
+            job_id: createResponse.job_id,
+            mode: 'learn',
+            status: 'succeeded',
+            result: finalResult,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          } as JobResponse);
+          setProgress({ percent: 100, message: '分析完成！', stage: '完成' });
+          setIsAnalyzing(false);
+        },
+        onError: (errorMsg) => {
+          console.error('流式接收错误:', errorMsg);
+          setError(errorMsg);
+          setIsAnalyzing(false);
+        }
+      });
       
     } catch (err: any) {
       console.error('分析失败:', err);
@@ -130,7 +165,6 @@ const ShotAnalysis: React.FC = () => {
       } else {
         setError('网络连接失败，请检查后端服务');
       }
-    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -265,6 +299,7 @@ const ShotAnalysis: React.FC = () => {
     if (!segments || segments.length === 0) return null;
 
     const totalDuration = segments[segments.length - 1]?.end_ms || 1;
+    const playheadPosition = totalDuration > 0 ? (currentPlayTime / totalDuration) * 100 : 0;
 
     return (
       <div className="space-y-6">
@@ -285,6 +320,16 @@ const ShotAnalysis: React.FC = () => {
               </div>
             );
           })}
+          
+          {/* 播放进度竖线 - 时间标尺 */}
+          {currentPlayTime > 0 && playheadPosition <= 100 && (
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+              style={{ left: `${playheadPosition}%` }}
+            >
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rounded-full shadow-lg" />
+            </div>
+          )}
         </div>
 
         {/* 镜头片段轨道 */}
@@ -330,6 +375,16 @@ const ShotAnalysis: React.FC = () => {
                 </div>
               );
             })}
+            
+            {/* 播放进度竖线 - 镜头片段轨道 */}
+            {currentPlayTime > 0 && playheadPosition <= 100 && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+                style={{ left: `${playheadPosition}%` }}
+              >
+                <div className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rounded-full shadow-lg" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -353,6 +408,9 @@ const ShotAnalysis: React.FC = () => {
     label: string,
     gradient: string
   ) => {
+    // 计算当前播放位置的百分比
+    const playheadPosition = totalDuration > 0 ? (currentPlayTime / totalDuration) * 100 : 0;
+
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-bold text-gray-400">
@@ -387,6 +445,16 @@ const ShotAnalysis: React.FC = () => {
               </div>
             ));
           })}
+          
+          {/* 播放进度竖线 */}
+          {currentPlayTime > 0 && playheadPosition <= 100 && (
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 pointer-events-none"
+              style={{ left: `${playheadPosition}%` }}
+            >
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rounded-full shadow-lg" />
+            </div>
+          )}
         </div>
       </div>
     );

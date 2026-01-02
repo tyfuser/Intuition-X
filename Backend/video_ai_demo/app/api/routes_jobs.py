@@ -1,10 +1,12 @@
 """Job相关API路由"""
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
 import json
+import asyncio
 
 from ..db.session import get_db
 from ..db.repo import JobRepository
@@ -385,4 +387,142 @@ async def delete_job(job_id: str):
     except Exception as e:
         logger.error(f"删除 Job {job_id} 失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+
+@router.get("/jobs/{job_id}/stream")
+async def stream_job_progress(job_id: str):
+    """
+    SSE 流式推送任务进度和片段数据
+    
+    Args:
+        job_id: Job ID
+    
+    Returns:
+        SSE 流
+    """
+    async def event_generator():
+        """生成 SSE 事件"""
+        try:
+            # 检查任务是否存在
+            with get_db() as db:
+                job_repo = JobRepository(db)
+                job = job_repo.get(job_id)
+                
+                if not job:
+                    yield f"event: error\ndata: {json.dumps({'error': 'Job不存在'})}\n\n"
+                    return
+            
+            logger.info(f"开始流式推送任务 {job_id} 的进度")
+            
+            last_partial_result = None
+            last_status = None
+            check_count = 0
+            max_checks = 300  # 最多检查5分钟（每秒一次）
+            
+            while check_count < max_checks:
+                with get_db() as db:
+                    job_repo = JobRepository(db)
+                    job = job_repo.get(job_id)
+                    
+                    if not job:
+                        yield f"event: error\ndata: {json.dumps({'error': 'Job已删除'})}\n\n"
+                        return
+                    
+                    current_status = job.status.value
+                    
+                    # 发送进度更新
+                    if job.status == JobStatus.RUNNING:
+                        progress_data = {
+                            "type": "progress",
+                            "status": current_status,
+                            "progress": {
+                                "stage": job.progress_stage,
+                                "percent": job.progress_percent or 0,
+                                "message": job.progress_message or ""
+                            }
+                        }
+                        yield f"data: {json.dumps(progress_data)}\n\n"
+                    
+                    # 发送部分结果（片段数据）
+                    if job.partial_result_json and job.partial_result_json != last_partial_result:
+                        try:
+                            partial_result = json.loads(job.partial_result_json)
+                            
+                            # 提取片段数据
+                            segments = None
+                            if "target" in partial_result:
+                                segments = partial_result["target"].get("segments", [])
+                            
+                            if segments:
+                                segment_data = {
+                                    "type": "segments",
+                                    "status": current_status,
+                                    "segments": segments,
+                                    "total": len(segments)
+                                }
+                                yield f"data: {json.dumps(segment_data)}\n\n"
+                                
+                                last_partial_result = job.partial_result_json
+                                logger.info(f"推送 {len(segments)} 个片段到前端")
+                        
+                        except json.JSONDecodeError as e:
+                            logger.error(f"解析部分结果失败: {str(e)}")
+                    
+                    # 任务完成
+                    if job.status == JobStatus.SUCCEEDED:
+                        # 发送最终结果
+                        if job.result_json:
+                            try:
+                                result = json.loads(job.result_json)
+                                complete_data = {
+                                    "type": "complete",
+                                    "status": "succeeded",
+                                    "result": result
+                                }
+                                yield f"data: {json.dumps(complete_data)}\n\n"
+                                logger.info(f"任务 {job_id} 完成，推送最终结果")
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        # 发送完成信号
+                        yield f"event: done\ndata: {json.dumps({'status': 'succeeded'})}\n\n"
+                        return
+                    
+                    # 任务失败
+                    elif job.status == JobStatus.FAILED:
+                        error_data = {
+                            "type": "error",
+                            "status": "failed",
+                            "error": {
+                                "message": job.error_message or "任务失败",
+                                "details": json.loads(job.error_details) if job.error_details else None
+                            }
+                        }
+                        yield f"data: {json.dumps(error_data)}\n\n"
+                        yield f"event: done\ndata: {json.dumps({'status': 'failed'})}\n\n"
+                        logger.error(f"任务 {job_id} 失败")
+                        return
+                    
+                    last_status = current_status
+                
+                # 等待1秒后继续检查
+                await asyncio.sleep(1)
+                check_count += 1
+            
+            # 超时
+            yield f"event: error\ndata: {json.dumps({'error': '任务超时'})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"流式推送异常: {str(e)}", exc_info=True)
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
