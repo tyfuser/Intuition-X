@@ -298,80 +298,6 @@
 
 ---
 
-## 🏗️ 技术架构
-
-### 系统架构图
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         用户浏览器                            │
-│                     (Chrome/Firefox/Safari)                  │
-└────────────────────────┬────────────────────────────────────┘
-                         │ HTTPS
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        前端应用层                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  React 18 + TypeScript + Vite                        │  │
-│  │  - UI 组件 (12个核心组件)                             │  │
-│  │  - 状态管理 (React Hooks)                            │  │
-│  │  - 路由系统 (客户端路由)                              │  │
-│  │  - API 服务层 (5个服务模块)                           │  │
-│  └──────────────────────────────────────────────────────┘  │
-│           Tailwind CSS │ Lucide Icons │ Recharts            │
-└────────────────────────┬────────────────────────────────────┘
-                         │ REST API / JSON
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        后端服务层                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  FastAPI (Python 3.9+)                                │  │
-│  │                                                        │  │
-│  │  API 路由层                                            │  │
-│  │  ├─ routes_auth.py        认证/授权                   │  │
-│  │  ├─ routes_dashboard.py   仪表板数据                  │  │
-│  │  ├─ routes_analysis.py    视频分析                    │  │
-│  │  ├─ routes_jobs.py        任务管理                    │  │
-│  │  ├─ routes_knowledge.py   知识库                      │  │
-│  │  └─ routes_user.py        用户管理                    │  │
-│  │                                                        │  │
-│  │  核心业务层                                            │  │
-│  │  ├─ Pipeline 编排器       任务流程编排                 │  │
-│  │  ├─ 视频处理步骤          抽帧/分析/对比               │  │
-│  │  ├─ AI 集成层            多模态LLM调用                 │  │
-│  │  └─ 数据仓储层           数据库操作                   │  │
-│  │                                                        │  │
-│  │  支持服务层                                            │  │
-│  │  ├─ 认证系统 (JWT)                                    │  │
-│  │  ├─ 配置管理 (Pydantic)                               │  │
-│  │  ├─ 错误处理                                          │  │
-│  │  ├─ 日志系统                                          │  │
-│  │  └─ JSON Schema 校验                                  │  │
-│  └──────────────────────────────────────────────────────┘  │
-└────────────┬───────────────────────┬────────────────────────┘
-             │                       │
-             ▼                       ▼
-┌──────────────────────┐  ┌──────────────────────────────────┐
-│    数据存储层         │  │       外部服务集成                 │
-│                      │  │                                   │
-│  ┌────────────────┐ │  │  ┌──────────────────────────┐    │
-│  │  SQLite / PG   │ │  │  │  Qwen2.5-VL              │    │
-│  │  - 任务表      │ │  │  │  多模态视觉理解           │    │
-│  │  - 用户表      │ │  │  └──────────────────────────┘    │
-│  │  - 资源表      │ │  │                                   │
-│  │  - 知识库表    │ │  │  ┌──────────────────────────┐    │
-│  └────────────────┘ │  │  │  Google Gemini           │    │
-│                      │  │  │  AI 内容生成             │    │
-│  ┌────────────────┐ │  │  └──────────────────────────┘    │
-│  │  文件系统      │ │  │                                   │
-│  │  - 上传视频    │ │  │  ┌──────────────────────────┐    │
-│  │  - 抽帧图片    │ │  │  │  FFmpeg                  │    │
-│  │  - 关键帧      │ │  │  │  视频处理工具             │    │
-│  │  - 预览视频    │ │  │  └──────────────────────────┘    │
-│  └────────────────┘ │  │                                   │
-└──────────────────────┘  └───────────────────────────────────┘
-```
-
 ### 技术栈详情
 
 #### 前端技术栈
@@ -1207,24 +1133,23 @@ GET /v1/video-analysis/jobs/job_abc123
 | 文档 | 说明 | 路径 |
 |------|------|------|
 | README.md | 后端总说明 | `Backend/video_ai_demo/README.md` |
+| DOCS_INDEX.md | 文档索引 | `Backend/video_ai_demo/DOCS_INDEX.md` |
 | PROJECT_SUMMARY.md | 项目总结 | `Backend/video_ai_demo/PROJECT_SUMMARY.md` |
 | QUICKSTART.md | 快速入门 | `Backend/video_ai_demo/QUICKSTART.md` |
+| QUICK_REFERENCE.md | 快速参考 | `Backend/video_ai_demo/QUICK_REFERENCE.md` |
 | API_GUIDE.md | API 使用指南 | `Backend/video_ai_demo/API_GUIDE.md` |
+| API_QUICK_REFERENCE.md | API 快速参考 | `Backend/video_ai_demo/API_QUICK_REFERENCE.md` |
 | DEPLOYMENT.md | 部署指南 | `Backend/video_ai_demo/DEPLOYMENT.md` |
 | CV_SCENE_DETECTION.md | 场景检测说明 | `Backend/video_ai_demo/CV_SCENE_DETECTION.md` |
+| CV_QUICK_REFERENCE.md | CV 快速参考 | `Backend/video_ai_demo/CV_QUICK_REFERENCE.md` |
 | SHOT_TERMINOLOGY.md | 镜头术语 | `Backend/video_ai_demo/SHOT_TERMINOLOGY.md` |
+| UPGRADE_GUIDE.md | 升级指南 | `Backend/video_ai_demo/UPGRADE_GUIDE.md` |
 
 #### 前端文档
 
 | 文档 | 说明 | 路径 |
 |------|------|------|
 | README.md | 前端总说明 | `frontend/README.md` |
-| PROJECT_OVERVIEW.md | 项目总览 | `frontend/PROJECT_OVERVIEW.md` |
-| QUICK_START.md | 快速开始 | `frontend/QUICK_START.md` |
-| SHOT_ANALYSIS_GUIDE.md | 镜头拆解指南 | `frontend/SHOT_ANALYSIS_GUIDE.md` |
-| API_COMPATIBILITY.md | API 兼容性 | `frontend/API_COMPATIBILITY.md` |
-| ENV_CONFIG.md | 环境配置 | `frontend/ENV_CONFIG.md` |
-| TROUBLESHOOTING.md | 故障排查 | `frontend/TROUBLESHOOTING.md` |
 
 ### 开发规范
 
@@ -1603,36 +1528,6 @@ npm install
 - [ ] 更新相关文档
 - [ ] 通过测试
 - [ ] 无 Lint 警告
-
----
-
-## 📊 项目统计
-
-### 代码量
-
-```
-后端:
-  Python 代码:      ~3000 行
-  核心模块:         8 个
-  API 路由:         8 个
-  Pipeline 步骤:    8 个
-
-前端:
-  TypeScript 代码:  ~8000 行
-  React 组件:       12 个
-  服务模块:         5 个
-  类型定义:         200+ 个
-```
-
-### 功能完成度
-
-- ✅ 视频深度拆解: 100%
-- ✅ 镜头拆解分析: 100% ⭐
-- ✅ 视频转幻灯片: 100%
-- ✅ 创作中心: 100%
-- ✅ 知识库管理: 100%
-- ✅ 用户认证: 100%
-- ⏳ 总览面板: 80%（需后端完整 API）
 
 ---
 
